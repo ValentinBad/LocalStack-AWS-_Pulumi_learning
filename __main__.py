@@ -68,12 +68,33 @@ pulumi.export("subnet_id", public_subnet.id)
 #}1
 
 #2Security Group{
-
 security_group = aws.ec2.SecurityGroup("my-security-group",
-
-
+description="Allow SSH and HTTP traffic",
+ingress=[
+aws.ec2.SecurityGroupIngressArgs(
+    from_port=22,
+    to_port= 22,
+    protocol="tcp",
+    cidr_blocks=["0.0.0.0/0"],
+),
+aws.ec2.SecurityGroupIngressArgs(
+    from_port=80,
+    to_port=80,
+    protocol="tcp",
+    cidr_blocks=["0.0.0.0/0"],
+),
+],
+egress=[
+aws.ec2.SecurityGroupEgressArgs(
+from_port=0,
+to_port=0,
+protocol="-1",
+cidr_blocks=["0.0.0.0/0"],
+),
+],
+opts=pulumi.ResourceOptions(provider=localstack_provider),
 )
-
+pulumi.export("security_group_id", security_group.id)
 
 #}2
 
