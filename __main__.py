@@ -1,5 +1,5 @@
 """An AWS Python Pulumi program"""
-
+import json
 import pulumi
 import pulumi_aws as aws
 from pulumi_aws import s3
@@ -14,6 +14,10 @@ localstack_provider = aws.Provider("localstack",
     endpoints=[
         {"ec2": "http://localhost:4566"},
         {"sts": "http://localhost:4566"},
+        {"ecs": "http://localhost:4566"},
+        {"iam": "http://localhost:4566"},
+        {"logs": "http://localhost:4566"},
+        {"elbv2": "http://localhost:4566"},
     ]
 )
 
@@ -97,4 +101,155 @@ opts=pulumi.ResourceOptions(provider=localstack_provider),
 pulumi.export("security_group_id", security_group.id)
 
 #}2
+
+#3 NAT Gateway{
+elastic_ip = aws.ec2.Eip("nat-eip",
+   opts=pulumi.ResourceOptions(provider=localstack_provider),)
+
+nat_instance = aws.ec2.Instance("nat-instance",
+    ami="ami-0c55b159cbfafe1f0",  # Amazon Linux 2 AMI (update if needed)
+    instance_type="t2.micro",     # Instance type (small and free-tier eligible)
+    associate_public_ip_address=True,  # Attach a public IP
+    key_name="test",      # Your SSH key name (must exist in AWS)
+    security_groups=[security_group.name],  # Attach security group
+    tags={"Name": "NAT Instance"},
+    opts=pulumi.ResourceOptions(provider=localstack_provider),
+)
+pulumi.export("nat_instance_id", nat_instance.id)
+
+#}3
+
+# #4 NOT FREE lambda{
+
+# # IAM role that Lambda can assume
+# lambda_role = aws.iam.Role("lambda-exec-role",
+#     assume_role_policy=json.dumps({
+#         "Version": "2012-10-17",
+#         "Statement": [{
+#             "Action": "sts:AssumeRole",
+#             "Principal": {
+#                 "Service": "lambda.amazonaws.com"
+#             },
+#             "Effect": "Allow",
+#             "Sid": ""
+#         }]
+#     }),
+#     opts=pulumi.ResourceOptions(provider=localstack_provider)
+# )
+
+# # Inline policy to allow basic logging
+# role_policy = aws.iam.RolePolicy("lambda-policy",
+#     role=lambda_role.id,
+#     policy=json.dumps({
+#         "Version": "2012-10-17",
+#         "Statement": [{
+#             "Effect": "Allow",
+#             "Action": ["logs:*"],
+#             "Resource": "*"
+#         }]
+#     }),
+#     opts=pulumi.ResourceOptions(provider=localstack_provider)
+# )
+
+# # The Lambda function code (inline for testing)
+# lambda_function = aws.lambda_.Function("hello-lambda",
+#     runtime="python3.8",
+#     role=lambda_role.arn,
+#     handler="index.handler",
+#     code=pulumi.AssetArchive({
+#         ".": pulumi.FileArchive("./lambda")  # folder with index.py file
+#     }),
+#     opts=pulumi.ResourceOptions(provider=localstack_provider)
+# )
+
+# pulumi.export("lambda_name", lambda_function.name)
+
+# #}4
+
+# #5 NOT FREE ecs{
+
+# # ECS Cluster
+# cluster = aws.ecs.Cluster("ecs-cluster",
+#     opts=pulumi.ResourceOptions(provider=localstack_provider)
+# )
+
+# # Dummy role (LocalStack accepts this for simulation)
+# execution_role = aws.iam.Role("ecsTaskExecutionRole",
+#     assume_role_policy=json.dumps({
+#         "Version": "2012-10-17",
+#         "Statement": [{
+#             "Action": "sts:AssumeRole",
+#             "Principal": { "Service": "ecs-tasks.amazonaws.com" },
+#             "Effect": "Allow",
+#             "Sid": ""
+#         }]
+#     }),
+#     opts=pulumi.ResourceOptions(provider=localstack_provider)
+# )
+
+# # Task Definition (nginx)
+# task_definition = aws.ecs.TaskDefinition("nginx-task",
+#     family="nginx",
+#     cpu="256",
+#     memory="512",
+#     network_mode="bridge",
+#     requires_compatibilities=["EC2"],
+#     execution_role_arn=execution_role.arn,
+#     container_definitions=json.dumps([{
+#         "name": "nginx",
+#         "image": "nginx",
+#         "portMappings": [{
+#             "containerPort": 80,
+#             "hostPort": 8080,
+#             "protocol": "tcp"
+#         }]
+#     }]),
+#     opts=pulumi.ResourceOptions(provider=localstack_provider)
+# )
+
+# # ECS Service
+# service = aws.ecs.Service("nginx-service",
+#     cluster=cluster.arn,
+#     desired_count=1,
+#     launch_type="EC2",
+#     task_definition=task_definition.arn,
+#     opts=pulumi.ResourceOptions(provider=localstack_provider)
+# )
+
+# pulumi.export("cluster_name", cluster.name)
+# pulumi.export("task_def", task_definition.arn)
+
+
+# #}5
+
+# Not free #6 App load balancer { 
+
+# # Subnet 2 for ALB
+# subnet2 = aws.ec2.Subnet("subnet-2", vpc_id=vpc.id, cidr_block="10.0.2.0/24",opts=pulumi.ResourceOptions(provider=localstack_provider))
+
+# alb = aws.lb.LoadBalancer("main-alb",
+#     internal=False,
+#     load_balancer_type="application",
+#     security_groups=[security_group.id],
+#     subnets=[public_subnet.id , subnet2.id],
+#     enable_deletion_protection=True,
+# opts=pulumi.ResourceOptions(provider=localstack_provider)
+# )
+
+# listener = aws.lb.Listener("alb-listener",
+#     load_balancer_arn=alb.arn,
+#     port=80,
+#     protocol="HTTP",
+#     default_actions=[{
+#         "type": "fixed-response",
+#         "fixed_response": {
+#             "status_code": 200,
+#             "content_type": "text/plain",
+#             "message_body": "OK"
+#         }
+#     }],
+#     opts=pulumi.ResourceOptions(provider=localstack_provider)
+# )
+
+# #}6
 
