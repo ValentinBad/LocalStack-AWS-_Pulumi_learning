@@ -12,12 +12,17 @@ localstack_provider = aws.Provider("localstack",
     skip_metadata_api_check=True,
     s3_use_path_style=True,
     endpoints=[
+
+        {"apigateway": "http://localhost:4566"},
         {"ec2": "http://localhost:4566"},
         {"sts": "http://localhost:4566"},
         {"ecs": "http://localhost:4566"},
         {"iam": "http://localhost:4566"},
         {"logs": "http://localhost:4566"},
         {"elbv2": "http://localhost:4566"},
+        {"s3": "http://localhost:4566"},
+        {"rds": "http://localhost:4566"},
+        { "ssm": "http://localhost:4566"},
     ]
 )
 
@@ -253,3 +258,129 @@ pulumi.export("nat_instance_id", nat_instance.id)
 
 # #}6
 
+# 7 API Gateway {
+rest_api = aws.apigateway.RestApi("my-api",
+    name="my-api",
+    description="Sample API Gateway REST API",
+    opts=pulumi.ResourceOptions(provider=localstack_provider)
+)
+
+# Ресурс /hello
+resource = aws.apigateway.Resource("hello-resource",
+    rest_api=rest_api.id,
+    parent_id=rest_api.root_resource_id,
+    path_part="hello",
+    opts=pulumi.ResourceOptions(provider=localstack_provider)
+)
+
+# Метод GET
+method = aws.apigateway.Method("hello-method",
+    rest_api=rest_api.id,
+    resource_id=resource.id,
+    http_method="GET",
+    authorization="NONE",
+    opts=pulumi.ResourceOptions(provider=localstack_provider)
+)
+
+# Інтеграція MOCK
+integration = aws.apigateway.Integration("hello-integration",
+    rest_api=rest_api.id,
+    resource_id=resource.id,
+    http_method=method.http_method,
+    type="MOCK",
+    request_templates={
+        "application/json": '{ "statusCode": 200 }'
+    },
+    opts=pulumi.ResourceOptions(provider=localstack_provider)
+)
+
+# Method Response
+method_response = aws.apigateway.MethodResponse("hello-method-response",
+    rest_api=rest_api.id,
+    resource_id=resource.id,
+    http_method=method.http_method,
+    status_code="200",
+    response_models={
+        "application/json": "Empty"
+    },
+    opts=pulumi.ResourceOptions(provider=localstack_provider)
+)
+
+# Integration Response
+integration_response = aws.apigateway.IntegrationResponse("hello-integration-response",
+    rest_api=rest_api.id,
+    resource_id=resource.id,
+    http_method=method.http_method,
+    status_code="200",
+    response_templates={
+        "application/json": '"Hello from Pulumi + LocalStack!"'
+    },
+    opts=pulumi.ResourceOptions(provider=localstack_provider)
+)
+
+deployment = aws.apigateway.Deployment("api-deployment",
+    rest_api=rest_api.id,
+    opts=pulumi.ResourceOptions(
+        provider=localstack_provider,
+        depends_on=[method, integration]
+    )
+)
+
+# Стадія
+stage = aws.apigateway.Stage("api-stage",
+    rest_api=rest_api.id,
+    deployment=deployment.id,
+    stage_name="dev",
+    opts=pulumi.ResourceOptions(provider=localstack_provider)
+)
+
+# Посилання на локальний API Gateway
+pulumi.export("api_url", pulumi.Output.concat("http://localhost:4566/restapis/", rest_api.id, "/dev/_user_request_/hello"))
+# }7
+
+# Not FREE # 8 Route53 {
+# zone = aws.route53.Zone("my-zone",
+#     name="example.com",
+#     opts=pulumi.ResourceOptions(provider=localstack_provider)
+# )
+
+# record = aws.route53.Record("api-record",
+#     zone_id=zone.id,
+#     name="api.example.com",
+#     type="A",
+#     ttl=300,
+#     records=["127.0.0.1"], 
+#     opts=pulumi.ResourceOptions(provider=localstack_provider)
+# )
+
+# pulumi.export("dns_name", record.name)
+# # }8
+
+# 9 s3{
+
+bucket = aws.s3.Bucket("my-bucket",opts=pulumi.ResourceOptions(provider=localstack_provider) )
+
+bucket_object = aws.s3.BucketObject("hi.txt",
+    bucket = bucket.id,
+    key="hi.txt",
+    source=pulumi.FileAsset("hi.txt"),
+    opts=pulumi.ResourceOptions(provider=localstack_provider),                                    
+)
+
+pulumi.export("bucket_name", bucket.id)
+pulumi.export("file_url", pulumi.Output.concat("http://localhost:4566/", bucket.id, "/", bucket_object.key))
+
+# } 
+
+
+#10 ssm{
+
+ssm_param = aws.ssm.Parameter("sss-first-param",
+type="SecureString",
+name="/myapp/config/db-url",
+value="postgres://admin:admin123@localhost:5432/mydb",
+opts=pulumi.ResourceOptions(provider=localstack_provider),     
+
+)
+
+#}
