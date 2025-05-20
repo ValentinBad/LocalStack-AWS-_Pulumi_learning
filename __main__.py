@@ -26,12 +26,13 @@ localstack_provider = aws.Provider("localstack",
     ]
 )
 
+# const stackConfig = new pulumi.Config();
+# const vpc_cidr: string = stackConfig.require("CIDR");
 
 #1 Practice with VPC{
-
 #vpc
 vpc = aws.ec2.Vpc("main-vpc",
-cidr_block="10.0.0.0/16",
+cidr_block=vpc_cidr,
 enable_dns_support=True,
 enable_dns_hostnames=True,
 tags = {"Name": "main-vpc"},
